@@ -3,10 +3,22 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/jessevdk/go-flags"
+	"github.com/parmaster/gdu/fs"
 	"github.com/rivo/tview"
 )
+
+var Options struct {
+	// Dir        bool `long:"dir" short:"d" description:"show help message"`
+	Help       bool `long:"help" short:"h" description:"show help message"`
+	Verbose    bool `long:"verbose" short:"v" env:"VERBOSE" description:"verbose output (default: false)"`
+	Positional struct {
+		Dir string
+	} `positional-args:"yes"`
+}
 
 func fillTable(table *tview.Table, text string) {
 	for i := 0; i < 10; i++ {
@@ -27,6 +39,27 @@ func fillTable(table *tview.Table, text string) {
 }
 
 func main() {
+
+	if _, err := flags.Parse(&Options); err != nil {
+		os.Exit(1)
+	}
+
+	var dir string
+	var err error
+	if len(Options.Positional.Dir) != 0 {
+		dir = Options.Positional.Dir
+	} else {
+		dir, err = os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	fmt.Println("dir:", dir)
+
+	fs := fs.NewFS(dir)
+	fs.Scan()
+
 	app := tview.NewApplication()
 
 	table := tview.NewTable()
