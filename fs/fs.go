@@ -89,13 +89,13 @@ func (fs *FS) ChangeDir(dir string) error {
 
 type ListItem struct {
 	Name  string
-	Size  int64
+	Size  uint64
 	IsDir bool
 }
 
 type ListView struct {
 	Items     []ListItem
-	TotalSize int64
+	TotalSize uint64
 }
 
 func (fs *FS) List() *ListView {
@@ -130,14 +130,30 @@ func (l *ListView) Len() int {
 
 // Direcories sorted by size desc, then files sorted by size desc
 // ORDER BY is_dir DESC, size DESC
+// ".." is always first
 func (l *ListView) Less(i, j int) bool {
+	if l.Items[i].Name == ".." {
+		return true
+	}
+	if l.Items[j].Name == ".." {
+		return false
+	}
+
 	if l.Items[i].IsDir && !l.Items[j].IsDir {
 		return true
 	}
 	if !l.Items[i].IsDir && l.Items[j].IsDir {
 		return false
 	}
-	return l.Items[i].Size > l.Items[j].Size
+
+	if l.Items[i].Size > l.Items[j].Size {
+		return true
+	}
+	if l.Items[i].Size < l.Items[j].Size {
+		return false
+	}
+
+	return l.Items[i].Name < l.Items[j].Name
 }
 
 func (l *ListView) Swap(i, j int) {
@@ -148,8 +164,8 @@ func (l *ListView) Swap(i, j int) {
 type Node struct {
 	Name  string
 	IsDir bool
-	Size  int64
-	Files int64
+	Size  uint64
+	Files uint64
 	Child map[string]*Node
 }
 
@@ -160,11 +176,11 @@ type Node struct {
 // leaf node is a file, non-leaf node is a directory
 func (n *Node) add(path []string, info fs.FileInfo) {
 	if len(path) == 0 {
-		n.Size = info.Size()
+		n.Size = uint64(info.Size())
 		n.IsDir = false
 		return
 	}
-	n.Size += info.Size()
+	n.Size += uint64(info.Size())
 	n.Files++
 
 	name := path[0]
