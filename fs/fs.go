@@ -63,27 +63,45 @@ func (n *Node) Find(paths []string) *Node {
 	return child.Find(paths[1:])
 }
 
+var (
+	ErrNotADirectory = fmt.Errorf("not a directory")
+	ErrDoesntExist   = fmt.Errorf("does not exist")
+	ErrNotFound      = fmt.Errorf("not found")
+)
+
 func (fs *FS) ChangeDir(dir string) error {
+	var newStrDir string
 	if dir == ".." {
 		if fs.CurrentDir == fs.Dir {
+			// already at root
 			return nil
 		}
 
-		fs.CurrentDir = filepath.Dir(fs.CurrentDir)
-		if fs.CurrentDir == fs.Dir {
+		newStrDir = filepath.Dir(fs.CurrentDir)
+		if newStrDir == fs.Dir {
+			// return to root
+			fs.CurrentDir = fs.Dir
 			fs.Current = fs.Root
 			return nil
 		}
 
 	} else {
-		fs.CurrentDir = filepath.Join(fs.CurrentDir, dir)
+		newStrDir = filepath.Join(fs.CurrentDir, dir)
 	}
 
-	searchDir := strings.TrimPrefix(fs.CurrentDir, fs.Dir)
+	searchDir := strings.TrimPrefix(newStrDir, fs.Dir)
 	searchDir = strings.TrimPrefix(searchDir, string(filepath.Separator))
 
-	fs.Current = fs.Root.Find(strings.Split(searchDir, string(filepath.Separator)))
+	newDir := fs.Root.Find(strings.Split(searchDir, string(filepath.Separator)))
+	if newDir == nil {
+		return ErrNotFound
+	}
+	if !newDir.IsDir {
+		return ErrNotADirectory
+	}
 
+	fs.CurrentDir = newStrDir
+	fs.Current = newDir
 	return nil
 }
 

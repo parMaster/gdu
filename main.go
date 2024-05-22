@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gdamore/tcell/v2"
@@ -28,6 +29,7 @@ type App struct {
 	view   *tview.Application
 	table  *tview.Table
 	header *tview.TextView
+	status *tview.TextView
 }
 
 func NewApp(dir string) *App {
@@ -98,15 +100,21 @@ func (a *App) Update(list fs.ListView) {
 	a.header.SetText(a.fs.CurrentDir)
 }
 
+type Position struct {
+	row int
+	col int
+}
+
+var posHistory []Position
+
 func (a *App) Run() {
 	a.view = tview.NewApplication()
-
 	a.table = tview.NewTable()
 	a.table.SetBorders(false)
-
 	a.table.SetSelectable(true, false)
 
-	posRow, posCol := a.table.GetSelection()
+	posHistory = append(posHistory, Position{0, 0})
+
 	a.header = tview.NewTextView()
 
 	a.table.Select(0, 0).SetFixed(1, 1).SetDoneFunc(func(key tcell.Key) {
@@ -117,7 +125,6 @@ func (a *App) Run() {
 			a.table.SetSelectable(true, false)
 		}
 	}).SetSelectedFunc(func(row int, column int) {
-		a.table.GetCell(row, column).SetTextColor(tcell.ColorRed)
 
 		newDir := a.table.GetCell(row, 2).Text
 		newDir = strings.TrimPrefix(newDir, "📁 ")
@@ -125,18 +132,29 @@ func (a *App) Run() {
 
 		if newDir != ".." {
 			// remember cursor position
-			posRow, posCol = a.table.GetSelection()
+			posRow, posCol := a.table.GetSelection()
+			posHistory = append(posHistory, Position{posRow, posCol})
 		}
 
-		a.fs.ChangeDir(newDir)
+		err := a.fs.ChangeDir(newDir)
+		switch err {
+		case fs.ErrNotFound:
+			a.UpdateStatusBar("Not found")
+			return
+		case fs.ErrNotADirectory:
+			// a.UpdateStatusBar("Not a directory")
+			return
+		case fs.ErrDoesntExist:
+			a.UpdateStatusBar("Does not exist")
+			return
+		}
 
 		list := a.fs.List()
 		a.Update(*list)
-		// todo: restore cursor position through the whole history
-		// this is a simple one-level history
 		if newDir == ".." {
+			posRow, posCol := posHistory[len(posHistory)-1].row, posHistory[len(posHistory)-1].col
+			posHistory = posHistory[:len(posHistory)-1]
 			a.table.Select(posRow, posCol)
-			posRow, posCol = 0, 0
 		} else {
 			a.table.Select(0, 0)
 		}
@@ -149,9 +167,9 @@ func (a *App) Run() {
 	grid.AddItem(a.table, 1, 0, 1, 1, 0, 0, true)
 
 	// status bar
-	status := tview.NewTextView()
-	status.SetText("Status Bar")
-	grid.AddItem(status, 2, 0, 1, 1, 0, 0, false)
+	a.status = tview.NewTextView()
+	a.status.SetText("Esc: Exit")
+	grid.AddItem(a.status, 2, 0, 1, 1, 0, 0, false)
 
 	list := a.fs.List()
 	a.Update(*list)
@@ -159,7 +177,6 @@ func (a *App) Run() {
 	if err := a.view.SetRoot(grid, true).Run(); err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func (a *App) UpdateTableHeader() {
@@ -178,6 +195,21 @@ func (a *App) UpdateTableHeader() {
 			SetAlign(tview.AlignLeft).
 			SetSelectable(false).
 			SetExpansion(1))
+}
+
+func (a *App) UpdateStatusBar(message string) {
+	if message == "" {
+		a.status.SetText("Esc: Exit")
+		a.status.SetTextColor(tcell.ColorWhite)
+		return
+	}
+	str := fmt.Sprintf("Esc: Exit | %s", message)
+	a.status.SetText(str)
+	a.status.SetTextColor(tcell.ColorRed)
+	go func() {
+		time.Sleep(5 * time.Second)
+		a.UpdateStatusBar("")
+	}()
 }
 
 func main() {
